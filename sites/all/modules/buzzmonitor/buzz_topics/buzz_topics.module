@@ -1,0 +1,209 @@
+<?php
+
+
+function buzz_topics_init() {
+  if (function_exists('drupal_get_path')) {
+    $mpath = drupal_get_path('module', 'buzz_topics');
+    drupal_add_css($mpath . '/buzz_topics.css' );
+  }
+  
+  $currpath = dirname (__FILE__);
+  require_once( $currpath . '/buzz_topics.inc');
+  require_once( $currpath . '/searchfeeds.inc');
+
+}
+
+/**
+ * Implementation of hook_nodeapi()
+ */
+function buzz_topics_nodeapi(&$node, $op) {
+  if ($node->type == TOPIC_CONTENT_TYPE) {
+    switch ($op) {
+      case 'insert':
+        _buzz_topics_create_feeds($node);
+        break;
+      case 'update':
+        _buzz_topics_update_feeds($node);
+        break;
+      case 'delete':
+        _buzz_topics_delete_feeds($node);
+        break;
+    }
+  }
+}
+
+/**
+ * Creates the feeds for the given topic node
+ */
+function _buzz_topics_create_feeds($topic_node) {
+  if (TTLR_TOPIC_TERMS_VID > 0) {
+  
+      $dbterms = taxonomy_node_get_terms_by_vocabulary($topic_node, TTLR_TOPIC_TERMS_VID);
+      $terms = array();
+      if (is_array($dbterms) && sizeof($dbterms)>0) {
+        foreach ($dbterms as $term) {
+          $terms[] = $term->name;
+        }
+      }
+  }
+  
+  if (sizeof($terms) == 0 ) {
+    $terms = array($topic = $topic_node->title);
+  }
+  
+  $feed_categories = buzz_get_search_feeds();
+  foreach ($feed_categories as $category) {
+    foreach ($category as $feed_name => $feed_url) {
+      foreach ($terms as $term) {
+        $feed_node = _buzz_topics_create_feed_node(FEED_CONTENT_TYPE); 
+        _buzz_topics_set_feed_attributes($feed_node, $topic_node, $category, $feed_name, $feed_url, $term);
+  
+        // Store the generated feedapi settings, then remove the feedapi class data member
+        $feed_info = $feed_node->feedapi;
+        unset($feed_node->feedapi);
+        
+  
+        
+        node_save($feed_node);
+        
+        // Now we catchup the feedapi settings
+        _buzz_topics_create_feedapi_settings($feed_node, $feed_info);
+      }
+    } 
+  }
+
+}
+
+/**
+ * Updates the feeds related to the given topic node
+ */
+function _buzz_topics_update_feeds($topic_node) {
+
+  // Temporarily Disabled
+  return;
+
+  $feed_categories = buzz_get_search_feeds();
+
+  foreach (_buzz_topics_related_feeds($topic_node) as $feed_nid) {
+    $feed_found = FALSE;
+    $feed_node = node_load($feed_nid);
+    $feed_key = $feed_node->{FEED_KEY_FIELD};
+    if (is_array($feed_key)) {
+      $feed_key_value = $feed_key[0]['value'];
+      foreach ($feed_categories as $category) {
+        if (!$feed_found) {
+          foreach ($category as $feed_name => $feed_url) {
+            if ($feed_key_value == $feed_name) {
+              _buzz_topics_set_feed_attributes($feed_node, $topic_node, $category, $feed_name, $feed_url);
+              $feed_found = TRUE; 
+              break;
+            }
+          }
+        } 
+      } 
+    }
+    node_save($feed_node);
+  }
+}
+
+/**
+ * Deletes the feeds related to the given topic node
+ */
+function _buzz_topics_delete_feeds($topic_node) {
+  // Temporarily Disabled
+  return;
+  
+  foreach (_buzz_topics_related_feeds($topic_node) as $feed_nid) {
+    node_delete($feed_nid); 
+  }
+}
+
+/**
+ * Get an array of the feed node IDs related to the given topic node
+ */
+function _buzz_topics_related_feeds($topic_node) {
+  $feeds = array();
+  $table = 'content_type_' . FEED_CONTENT_TYPE;
+  $field = TOPIC_FIELD . '_nid';
+  $query = db_query('SELECT nid FROM {' . $table . '} WHERE ' . $field . ' = %d', $topic_node->nid);
+  while ($feed = db_fetch_object($query)) {
+    $feeds[] = $feed->nid;
+  }
+  return $feeds; 
+}
+
+/**
+ * Set the feed attributes based on the given topic node and configured feeds
+ */
+function _buzz_topics_set_feed_attributes(&$feed_node, $topic_node, $category, $feed_name, $feed_url, $term) {
+  $topic = $term;
+  $topic_no_spaces = str_replace(' ', '', $term);
+  $feed_url = str_replace(FEED_STRING_REPLACE_PATTERN, $topic, $feed_url);
+  $feed_url = str_replace(FEED_STRING_REPLACE_PATTERN_NO_SPACES, $topic_no_spaces, $feed_url);
+  $feed_url = str_replace(' ', '+', $feed_url);
+
+  $feed_node->title = $topic . ' ' . $feed_name . ' Feed';
+  $feed_node->{TOPIC_FIELD} = array('0' => array('nid' => $topic_node->nid));
+  $feed_node->{FEED_KEY_FIELD} = array('0' => array('value' => $feed_name));
+
+  $topic_node = node_load($topic_node->nid);
+
+  if (module_exists('taxonomy')) {
+    $terms = taxonomy_node_get_terms($topic_node);
+    foreach ($terms as $tid => $term) {
+      if (!$feed_node->taxonomy[$tid]) {
+        $feed_node->taxonomy[$tid] = $term;
+      }
+    }
+  }
+  
+  $feed_node->feedapi['feedapi_url'] = $feed_url;  
+}
+
+/**
+ * Creates a node object for a feed content type that is ready to be saved to the database.
+ * This code is borrowed from feedapi_create_node().  However, we want to change a couple
+ * of values before actually saving it to the database.
+ */
+function _buzz_topics_create_feed_node($feed_node_type) { 
+  $node = new stdClass();
+  $node->type = $feed_node_type;
+  if (!feedapi_enabled_type($node->type)) {
+    return FALSE;
+  }
+
+  $node_options = variable_get('node_options_'. $node->type, array('status', 'promote'));
+  // If this is a new node, fill in the default values.
+  foreach (array('status', 'promote', 'sticky') as $key) {
+    $node->$key = in_array($key, $node_options);
+  }
+  // Get the content-type settings as default
+  $node->feedapi = feedapi_get_settings($node->type);
+  
+  // We cannot refresh on create, otherwise this is going to take way too long
+  $node->feedapi['refresh_on_create'] = 0;
+
+  node_object_prepare($node);
+  return $node;
+}
+
+/**
+ * Overloads the FeedAPI Node Creation logic in order to save time and skip unnecessary data checking.
+ *
+ */
+function _buzz_topics_create_feedapi_settings($node, $feed_info){
+  db_query("INSERT INTO {feedapi} (
+          nid, vid, url, link, feed_type, processors,
+          parsers, next_refresh_time, settings) VALUES
+          (%d, %d, '%s', '%s', '%s', '%s', '%s', %d, '%s')",
+    $node->nid,
+    $node->vid,
+    $feed_info['feedapi_url'],
+    '',
+    "XML Feed",
+    serialize($feed_info['processors']),
+    serialize($feed_info['parsers']),
+    $feed_info['refresh_time'] = FEEDAPI_CRON_NEVER_REFRESH ? $feed_info['refresh_time'] : time(),    
+    serialize(array()));
+  
+}

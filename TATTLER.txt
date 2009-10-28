@@ -1,0 +1,15 @@
+
+------------------------------------------------------------------------
+Copyright (C) 2009 by Phase2 Technology.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY. See the LICENSE.txt file for more details.
+------------------------------------------------------------------------
+
+  		
+Project: tattler
+Release: 1.0RC1
+Build #: 155
+    

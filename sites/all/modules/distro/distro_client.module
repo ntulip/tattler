@@ -1,0 +1,163 @@
+<?php
+// $Id: distro_client.module,v 1.1.2.3 2009/10/13 15:35:31 inadarei Exp $
+/**
+ * @file
+ * Distro Client.
+ *
+ */
+
+define ('DISTRO_STATE_CACHE_VAR', 'distro_state_cache_var');
+
+
+/**
+* hook_cron implementation.
+*/
+function distro_client_cron() {
+  
+  // Cron should check for distro state if there is no state cached or if the
+  // configured time interval has elapsed.
+  $duration = distro_client_cache_duration();
+  $cache = cache_get(DISTRO_STATE_CACHE_VAR);
+  $now = time();
+  if (empty($cache) || (($now - variable_get('distro_last_check', 0)) > $duration)) {
+    distro_client_refresh();
+  }
+
+}
+
+/**
+* hook_menu implementation
+*/
+function distro_client_menu() {
+ $items = array();
+
+  $items['distro/check'] = array(
+    'title' => 'Distribution Check',
+    'page callback' => 'distro_client_refresh',
+    'access arguments' => array('administer site configuration'),    
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+* Resync state with the server
+*/
+function distro_client_refresh() { 
+  global $base_url;        
+    
+  $sql = "SELECT CONCAT(type, '!#', name) as id FROM {system} WHERE status = 1";
+  $ret = db_query($sql);
+  
+  $projects = array();
+  
+  while($obj = db_fetch_object($ret)) {
+    $projects[] = $obj->id;
+  }  
+  
+  sort($projects);
+  
+  $data = new stdClass();
+  $data->projects = $projects;
+
+  //-- Set environment information
+  $data->domain = $base_url;
+  $data->profile = variable_get('install_profile', 'default');
+  $data->theme = variable_get('theme_default', 'garland');  
+
+  //-- Installation Profiles set this URL during installation. Typically ends with 'distro/components'
+  $url = variable_get('distro_tracker_server', '');
+
+  if (!empty($url)) {
+  
+    $headers = array('Content-Type' => 'application/x-www-form-urlencoded');
+               
+    $data = array (
+      'info' => json_encode($data),
+    );
+           
+    //-- Shut the unnecessary and annoying "check" up:
+    variable_del('drupal_http_request_fails');         
+                   
+    $response = drupal_http_request($url, $headers, 'POST', http_build_query($data, '', '&'));
+    
+    // Prevent JSON converting array into an object
+    $components = json_decode($response->data, TRUE);
+
+    $duration =  distro_client_cache_duration();
+    cache_set(DISTRO_STATE_CACHE_VAR, $components, 'cache', time() + $duration);
+    variable_set('distro_last_check', time());
+  }     
+  
+  return "Check complete";
+
+}
+
+/**
+* duration of cache
+*/
+function distro_client_cache_duration() {
+  //-- last 3 hours, by default.
+  return variable_get('distro_cache_duration', 3 * 60 * 60); 
+}
+
+/**
+* Implementation of hook_requirements
+*/
+function distro_client_requirements($phase) {
+
+  if ($phase == 'runtime') {
+  
+    $cache = cache_get(DISTRO_STATE_CACHE_VAR);
+    
+    if (!is_array($cache->data)) {
+      distro_client_refresh();
+      $cache = cache_get(DISTRO_STATE_CACHE_VAR);      
+    }
+
+    $cache = $cache->data;
+    
+    $missing = array();
+    $extra = array();
+    
+    if (is_array($cache['missing']) && sizeof($cache['missing']) > 0 ) {
+      foreach ($cache['missing'] as $c) {
+        list($type, $name) = explode('!#', $c);
+        $missing[] = "$name [" . substr(ucfirst($type), 0,1) . "]";      
+      }
+      $missing = implode (', ', $missing);      
+    }
+
+    if (is_array($cache['extra']) && sizeof($cache['extra']) > 0 ) {
+      foreach ($cache['extra'] as $c) {
+        list($type, $name) = explode('!#', $c);
+        $extra[] = "$name [" . substr(ucfirst($type), 0,1) . "]";      
+      }
+      $extra = implode (', ', $extra);      
+    }
+    
+    if (!empty($missing) || !empty($extra)) {
+      
+      $msg  = "";
+      if (!empty($missing)) {
+        $msg .= t('Missing components: ') . $missing;        
+        $msg .= " ";
+      }
+      
+
+      if (!empty($extra)) {
+        $msg .= t('Obsolete components (need removal): ') . $extra;        
+      }
+      
+      $profile = variable_get('install_profile', 'default');
+    
+      $requirements['distro_extra_comp']['title'] = t('Outdated Distro: %profile. Please fix:', array('%profile' => $profile));
+      $requirements['distro_extra_comp']['description'] = $msg;
+      $requirements['distro_extra_comp']['severity'] = REQUIREMENT_ERROR;
+
+    }
+    
+    return $requirements;
+  }
+}                    

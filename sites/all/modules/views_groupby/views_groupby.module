@@ -1,0 +1,36 @@
+<?php
+// $Id: views_groupby.module,v 1.2 2009/03/03 01:07:33 inadarei Exp $
+
+/** @file 
+* Group By Module File
+*/
+
+
+function views_groupby_views_api() {
+  return array(
+    'api' => 2,
+  );
+}
+
+function views_groupby_views_query_alter(&$view, &$query) {
+
+  global $db_url, $db_type, $active_db;
+  
+  //$query->fields['nid']['count'] = true;
+  //$query->fields['nid']['alias'] = 'godhelpusfrommerlin';  
+  
+  //$query->fields['term_data_vid']['count'] = true;
+  
+  
+//  echo "<pre>".print_r ( $query->fields,true)."</pre>";
+//  exit();
+//  echo "<pre>".print_r ( $query,true)."</pre>";
+//  exit();
+//  echo "<pre>".print_r ( $query,true)."</pre>";
+//  exit();
+  
+//  $query->groupby =   array('term_data.tid');
+  //$query->groupby =   array('view_name');
+//  $query->orderby =   array('godhelpusfrommerlin desc');  
+  
+}

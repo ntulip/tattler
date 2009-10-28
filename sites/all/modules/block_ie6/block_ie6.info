@@ -1,0 +1,4 @@
+name = Block IE6
+description = Block old Internet Explorer Versions (Less than 7)
+package = Other
+core = 6.x

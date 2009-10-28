@@ -1,0 +1,16 @@
+; $Id: amcharts.info,v 1.1.2.1 2009/04/22 04:35:46 inadarei Exp $
+
+name = "Charts: amCharts"
+description = "amCharts Implementation for Drupal Charts & Graphs API."
+dependencies[]=charts_graphs
+dependencies[]=swfobject_api
+package = "Charts"
+core = 6.x
+php = 5.1
+
+; Information added by drupal.org packaging script on 2009-09-15
+version = "6.x-1.x-dev"
+core = "6.x"
+project = "charts_graphs"
+datestamp = "1252973126"
+

@@ -1,0 +1,14 @@
+name = BuzzMonitor Core
+description = "Buzz Monitor Engine."
+dependencies[] = content_copy
+
+package = "BuzzMonitor"
+core = 6.x
+php = 5.1
+
+; Information added by drupal.org packaging script on 2009-10-13
+version = "6.x-2.0-beta1"
+core = "6.x"
+project = "buzzmonitor"
+datestamp = "1255460706"
+

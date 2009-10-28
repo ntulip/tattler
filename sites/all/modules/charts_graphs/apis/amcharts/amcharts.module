@@ -1,0 +1,24 @@
+<?php
+/**
+* @file drupal module file implementing amcharts
+*/
+
+/**
+* Implementation of hook_charts_graphs_provider 
+**/
+function amcharts_chartgraph_provider() {
+  $provider =  array(
+    'path' => dirname(__FILE__) . '/amcharts.class.inc', //must be full path
+    'clazz' => 'ChartsAmcharts', //implementation class' name
+    'name' => 'amcharts', //name used when invoking through a factroy method
+    'nice_name' => 'amCharts',    
+     'chart_types' => array(
+      'line' => t('Line'),        
+      'column' => t('Bar Chart'),
+      'bar' => t('Horizontal Bars'),
+      'pie' => t('Pie'),                            
+    ),
+  );    
+  
+  return (object) $provider;
+}

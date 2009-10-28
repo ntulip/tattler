@@ -1,0 +1,46 @@
+--- feedapi.module	2009-10-06 02:25:19.000000000 -0400
++++ feedapi.module.irakli	2009-10-06 02:16:16.000000000 -0400
+@@ -1,5 +1,5 @@
+ <?php
+-// $Id: feedapi.module,v 1.23.2.119.2.79 2009/09/18 16:34:12 alexb Exp $
++// $Id: feedapi.module,v 1.23.2.119.2.80 2009/09/24 22:54:44 alexb Exp $
+ 
+ /**
+  * @file
+@@ -717,8 +717,13 @@ function feedapi_cron() {
+ 
+     while (feedapi_cron_time() && $feed = db_fetch_object($result)) {
+       $user = user_load(array('uid' => $feed->uid));
++      
++      feedapi_skip_trouble($feed); 
++            
++      variable_set('feedapi_last_nid_being_processed', $feed->nid); //-- mark start of processing
+       // Call the refresh process for each feed and store counters
+       $counter = feedapi_invoke('refresh', $feed, TRUE);
++      variable_del('feedapi_last_nid_being_processed'); //-- unmark if processing finished normally
+       if ($counter) {
+         foreach ($counter as $name => $value) {
+           $count['%'. $name] += $value;
+@@ -735,6 +740,22 @@ function feedapi_cron() {
+ }
+ 
+ /**
++* Skip feeds that seem like they cause trouble.
++*/
++function feedapi_skip_trouble() {
++
++  $last_troubled_nid = variable_get('feedapi_last_nid_being_processed', 0);
++  
++  if (is_numeric($last_troubled_nid) && $last_troubled_nid > 0) {
++    //-- Re-schedule processing of this feed, so others get a chance, too.
++    db_query('UPDATE {feedapi} SET next_refresh_time=%d WHERE nid=%d', time(), $last_troubled_nid);
++  }
++
++//    $result = db_query_range("SELECT f.nid, n.uid FROM {feedapi} f JOIN {node} n ON n.vid = f.vid WHERE next_refresh_time <= %d AND next_refresh_time <> %d ORDER BY next_refresh_time ASC", $now, FEEDAPI_CRON_NEVER_REFRESH, 0, FEEDAPI_CRON_FEEDS);
++
++}
++
++/**
+  * Check for time limits in cron processing.
+  *
+  * @return
